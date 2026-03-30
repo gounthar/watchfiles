@@ -14,6 +14,8 @@ jobs:
   build:
     runs-on: [self-hosted, linux, riscv64]
     timeout-minutes: 180
+    outputs:
+      python_version: ${{ steps.python_info.outputs.python_version }}
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
@@ -46,6 +48,10 @@ jobs:
             fi
           done
 
+      - name: Capture Python version
+        id: python_info
+        run: echo "python_version=$(python3 --version 2>&1)" >> "$GITHUB_OUTPUT"
+
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
         with:
@@ -59,10 +65,11 @@ jobs:
 
   release:
     needs: build
-    runs-on: [self-hosted, linux, riscv64]
+    runs-on: ubuntu-latest
     if: success()
     env:
       GH_REPO: ${{ github.repository }}
+      PYTHON_VERSION: ${{ needs.build.outputs.python_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -91,26 +98,33 @@ jobs:
       - name: Create or update release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WHL_NAME: ${{ steps.wheel_info.outputs.whl_name }}
+          VERSION: ${{ steps.wheel_info.outputs.version }}
         run: |
-          TAG="riscv64-v${{ steps.wheel_info.outputs.version }}"
-          TITLE="riscv64 wheel v${{ steps.wheel_info.outputs.version }}"
+          TAG="riscv64-v${VERSION}"
+          TITLE="riscv64 wheel v${VERSION}"
           gh release delete "$TAG" --yes 2>/dev/null || true
           git tag -d "$TAG" 2>/dev/null || true
           git push origin ":refs/tags/$TAG" 2>/dev/null || true
-          gh release create "$TAG"             --title "$TITLE"             --notes "Prebuilt riscv64 wheel for $(uname -m) Linux.
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "Prebuilt riscv64 wheel for riscv64 Linux.
 
-          Built on: BananaPi F3 (SpacemiT K1, rv64imafdcv)
-          Python: $(python3 --version 2>&1)
-          Wheel: ${{ steps.wheel_info.outputs.whl_name }}
+Built on: BananaPi F3 (SpacemiT K1, rv64imafdcv)
+Python: ${PYTHON_VERSION}
+Wheel: ${WHL_NAME}
 
-          Install:
-          \`\`\`
-          pip install watchfiles --find-links https://github.com/gounthar/$(basename $PWD)/releases/download/$TAG/
-          \`\`\`"             /tmp/wheels/*.whl             /tmp/wheels/SHA256SUMS
+Install:
+\`\`\`
+pip install watchfiles --find-links https://github.com/gounthar/watchfiles/releases/download/${TAG}/
+\`\`\`" \
+            /tmp/wheels/*.whl \
+            /tmp/wheels/SHA256SUMS
 
       - name: Cleanup
         if: always()
         run: rm -rf /tmp/wheels
+
   notify-index:
     needs: release
     runs-on: ubuntu-latest
@@ -119,8 +133,10 @@ jobs:
       - name: Trigger index update
         env:
           GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
         run: |
           gh api repos/gounthar/riscv64-python-wheels/dispatches \
             -f event_type=fork-release-published \
-            -f "client_payload[repo]=${{ github.repository }}" \
-            -f "client_payload[tag]=${{ github.ref_name }}"
+            -f "client_payload[repo]=${REPO}" \
+            -f "client_payload[tag]=${TAG}"
