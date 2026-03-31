@@ -1,6 +1,7 @@
+---
 name: Build riscv64 wheel
 
-on:
+"on":
   workflow_dispatch:
     inputs:
       release_tag:
@@ -95,6 +96,27 @@ jobs:
           cd /tmp/wheels
           sha256sum *.whl > SHA256SUMS
 
+      - name: Write release notes
+        env:
+          PYTHON_VERSION: ${{ needs.build.outputs.python_version }}
+          WHL_NAME: ${{ steps.wheel_info.outputs.whl_name }}
+          VERSION: ${{ steps.wheel_info.outputs.version }}
+        run: |
+          TAG="riscv64-v${VERSION}"
+          {
+            echo "Prebuilt riscv64 wheel for Linux."
+            echo ""
+            echo "Built on: BananaPi F3 (SpacemiT K1, rv64imafdcv)"
+            echo "Python: ${PYTHON_VERSION}"
+            echo "Wheel: ${WHL_NAME}"
+            echo ""
+            echo "Install:"
+            echo '```'
+            BASE_URL="https://github.com/gounthar/watchfiles/releases/download"
+            echo "pip install watchfiles --find-links ${BASE_URL}/${TAG}/"
+            echo '```'
+          } > /tmp/release-notes.md
+
       - name: Create or update release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -108,22 +130,13 @@ jobs:
           git push origin ":refs/tags/$TAG" 2>/dev/null || true
           gh release create "$TAG" \
             --title "$TITLE" \
-            --notes "Prebuilt riscv64 wheel for riscv64 Linux.
-
-Built on: BananaPi F3 (SpacemiT K1, rv64imafdcv)
-Python: ${PYTHON_VERSION}
-Wheel: ${WHL_NAME}
-
-Install:
-\`\`\`
-pip install watchfiles --find-links https://github.com/gounthar/watchfiles/releases/download/${TAG}/
-\`\`\`" \
+            --notes-file /tmp/release-notes.md \
             /tmp/wheels/*.whl \
             /tmp/wheels/SHA256SUMS
 
       - name: Cleanup
         if: always()
-        run: rm -rf /tmp/wheels
+        run: rm -rf /tmp/wheels /tmp/release-notes.md
 
   notify-index:
     needs: release
