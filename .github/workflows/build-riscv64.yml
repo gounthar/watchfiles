@@ -13,7 +13,7 @@ name: Build riscv64 wheel
 
 jobs:
   build:
-    runs-on: [self-hosted, linux, riscv64]
+    runs-on: ubuntu-24.04-riscv
     timeout-minutes: 180
     outputs:
       python_version: ${{ steps.python_info.outputs.python_version }}
@@ -26,15 +26,18 @@ jobs:
           ref: ${{ inputs.release_tag || github.ref }}
           fetch-depth: 0
 
-      - name: Set up Python
-        run: |
-          python3 -m venv /tmp/build-venv
-          . /tmp/build-venv/bin/activate
-          pip install --upgrade pip maturin
+      # Build on the RISE ubuntu-24.04-riscv runner with uv, matching the
+      # working httptools build. The self-hosted F3 board caused weekly
+      # runner-contention failures, and its bare python3 is absent on RISE
+      # runners - uv provisions a managed riscv64 Python instead.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
 
       - name: Build wheel
         run: |
+          uv venv --python 3.12 /tmp/build-venv
           . /tmp/build-venv/bin/activate
+          uv pip install --upgrade maturin
           maturin build --release --out /tmp/wheels/ --manifest-path Cargo.toml
 
       - name: Verify platform tag
@@ -51,7 +54,9 @@ jobs:
 
       - name: Capture Python version
         id: python_info
-        run: echo "python_version=$(python3 --version 2>&1)" >> "$GITHUB_OUTPUT"
+        run: |
+          . /tmp/build-venv/bin/activate
+          echo "python_version=$(python --version 2>&1)" >> "$GITHUB_OUTPUT"
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
