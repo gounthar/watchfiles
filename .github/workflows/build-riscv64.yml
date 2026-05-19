@@ -20,11 +20,19 @@ jobs:
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
-      - name: Checkout
+      - name: Checkout fork
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.release_tag || github.ref }}
           fetch-depth: 0
+
+      - name: Fetch upstream release tag
+        if: inputs.release_tag != ''
+        env:
+          REL: ${{ inputs.release_tag }}
+        run: |
+          git remote add upstream https://github.com/samuelcolvin/watchfiles.git
+          git fetch --no-tags upstream "refs/tags/${REL}:refs/tags/${REL}"
+          git checkout -f "refs/tags/${REL}"
 
       # Build on the RISE ubuntu-24.04-riscv runner with uv, matching the
       # working httptools build. The self-hosted F3 board caused weekly
