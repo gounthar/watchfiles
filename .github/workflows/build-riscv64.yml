@@ -9,7 +9,7 @@ name: Build riscv64 wheel
         required: false
         type: string
   schedule:
-    - cron: '0 2 * * 0'
+    - cron: '30 0 * * 6'  # Sat 00:30 UTC; F3 weekly builds are spread over the week
 
 jobs:
   build:
